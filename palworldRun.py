@@ -101,6 +101,12 @@ class ApplicationControlGUI(ttk.Frame):
         self.player_names_listbox = tk.Listbox(self.app_control_frame, height=10)
         self.player_names_listbox.grid(column=0, row=2, columnspan=3, padx=20, pady=(0, 10), sticky="ew")
 
+        kick_button = ttk.Button(self.app_control_frame, text="Kick", command=self.kick_player)
+        kick_button.grid(column=4, row=2, padx=(5, 0), pady=10, sticky="nw")
+
+        ban_button = ttk.Button(self.app_control_frame, text="Ban", command=self.ban_player)
+        ban_button.grid(column=5, row=2, padx=(5, 0), pady=10, sticky="nw")
+
 
 
         # Config Editor tab setup with scrollable area
@@ -122,6 +128,29 @@ class ApplicationControlGUI(ttk.Frame):
         save_button = ttk.Button(self.inner_frame, text='Save Config', command=self.save_config)
         save_button.grid(row=len(self.config_vars) + 1, column=0, columnspan=2, pady=10)
 
+         # Add new tab for Banned Players
+        self.banned_players_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.banned_players_frame, text='Banned Players')
+
+        # Listbox for Banned Players
+        self.banned_players_listbox = tk.Listbox(self.banned_players_frame, height=10)
+        self.banned_players_listbox.pack(side="left", fill="both", expand=True)
+
+        # Scrollbar for Banned Players Listbox
+        self.banned_players_scrollbar = ttk.Scrollbar(self.banned_players_frame, orient="vertical", command=self.banned_players_listbox.yview)
+        self.banned_players_scrollbar.pack(side="right", fill="y")
+        self.banned_players_listbox.config(yscrollcommand=self.banned_players_scrollbar.set)
+
+        # Load banned players into the listbox
+        self.load_banned_players()
+
+        # Unban Button
+        unban_button = ttk.Button(self.banned_players_frame, text="Unban", command=self.unban_player)
+        unban_button.pack(pady=10)
+
+        refresh_ban_button = ttk.Button(self.banned_players_frame, text="Refresh", command=self.load_banned_players)
+        refresh_ban_button.pack(pady=10)
+
         # CPU and Memory usage display for Palworld
         self.pal_cpu_label = ttk.Label(self, text="Palworld CPU Usage: 0%")
         self.pal_cpu_label.grid(column=0, row=2, padx=10, pady=10)
@@ -134,6 +163,33 @@ class ApplicationControlGUI(ttk.Frame):
         self.resource_usage_queue = queue.Queue()
         self.start_resource_monitoring_thread()
         self.check_resource_usage_queue()
+
+
+    def kick_player(self):
+        selected = self.player_names_listbox.curselection()
+        if selected:
+            player_name, player_id = self.get_player_info(selected[0])
+            self.send_rcon_command("KickPlayer", player_id)
+            messagebox.showinfo("Info", f"Kicked {player_name}")
+
+    def ban_player(self):
+        selected = self.player_names_listbox.curselection()
+        if selected:
+            player_name, player_id = self.get_player_info(selected[0])
+            self.send_rcon_command("BanPlayer", player_id)
+            messagebox.showinfo("Info", f"Banned {player_name}")
+            self.load_banned_players()
+
+    def send_rcon_command(self, command, args):
+        try:
+            rcon_ip = self.config_vars['PublicIP'].get() or '127.0.0.1'
+            rcon_port = int(self.config_vars['RCONPort'].get())
+            rcon_password = self.config_vars['AdminPassword'].get()
+            server_name = "this"
+            pal = PalworldUtil("", server_name, rcon_ip, rcon_port, rcon_password)
+            pal.rcon.run_command(command, [args])
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
 
     def update_status_indicator(self):
         """Update the status indicator and player count."""
@@ -176,6 +232,42 @@ class ApplicationControlGUI(ttk.Frame):
         except queue.Empty:
             pass
         self.after(1000, self.check_resource_usage_queue)
+
+    def load_banned_players(self):
+        try:
+            with open(self.banlist, 'r') as file:
+                banned_players = file.readlines()
+                for player in banned_players:
+                    self.banned_players_listbox.insert(tk.END, player.strip())
+        except FileNotFoundError:
+            messagebox.showerror('Error', 'Banlist file not found.')
+        except Exception as e:
+            messagebox.showerror('Error', str(e))
+
+    def unban_player(self):
+        selected = self.banned_players_listbox.curselection()
+        if selected:
+            player_name = self.banned_players_listbox.get(selected[0])
+            # Remove player from Listbox
+            self.banned_players_listbox.delete(selected[0])
+            # Remove player from banlist file
+            self.remove_player_from_banlist(player_name)
+
+    def remove_player_from_banlist(self, player_name):
+        try:
+            with open(self.banlist, 'r') as file:
+                banned_players = file.readlines()
+
+            # Remove the player from the list
+            banned_players = [player for player in banned_players if player.strip() != player_name]
+
+            # Write the updated list back to the file
+            with open(self.banlist, 'w') as file:
+                file.writelines(banned_players)
+
+            messagebox.showinfo('Info', f'Unbanned {player_name}')
+        except Exception as e:
+            messagebox.showerror('Error', str(e))
 
 
     def __del__(self):
@@ -279,33 +371,45 @@ class ApplicationControlGUI(ttk.Frame):
         except Exception as e:
             print("Error in get_player_count:", e)
 
-
-
     def update_player_count(self):
         if not self.update_players_active:
-            # Clear the player names listbox and update the label to show zero players
+            # Clear the listbox and update the label to show zero players
             self.player_names_listbox.delete(0, tk.END)
             self.player_count_label.config(text="Player Count: 0")
             return
+
         player_data = self.get_player_count()
         csv_data = io.StringIO(player_data)
         reader = csv.reader(csv_data)
 
-        # Clear the current list
-        self.player_names_listbox.delete(0, tk.END)
+        self.player_names_listbox.delete(0, tk.END)  # Clear the current list
 
         player_count = 0
         for row in reader:
-            # Assuming the first column is the player name
             if player_count > 0:  # Skip the header row
-                self.player_names_listbox.insert(tk.END, row[0])
+                # Ensure that row has the expected number of elements
+                if len(row) >= 2:
+                    player_name = row[0]
+                    player_id = row[1]
+                    self.player_names_listbox.insert(tk.END, f"{player_name}, {player_id}")
             player_count += 1
 
         if player_count > 0:
             self.player_count_label.config(text=f"Player Count: {player_count - 1}")
         else:
-            self.player_count_label.config(text=f"Player Count: 0")
+            self.player_count_label.config(text="Player Count: 0")
+
         self.after(10000, self.update_player_count)
+
+    def get_player_info(self, index):
+        item = self.player_names_listbox.get(index)
+        player_data = item.split(", ")
+        if len(player_data) >= 2:
+            player_name = player_data[0]
+            player_id = player_data[1]
+            return player_name, player_id
+        else:
+            raise ValueError("Invalid player data format")
         
 
     def save_config(self):
@@ -366,6 +470,7 @@ class ApplicationControlGUI(ttk.Frame):
         # Set the paths for .bat file and ini configuration file
         self.bat_file_path = os.path.join(steamcmd_folder, "start.bat")
         self.config_path = os.path.join(steamcmd_folder, "steamapps/common/PalServer/Pal/Saved/Config/WindowsServer/PalWorldSettings.ini")
+        self.banlist = os.path.join(steamcmd_folder, "steamapps/common/PalServer/Pal/Saved/SaveGames/banlist.txt")
 
         # Check if the .bat file exists and create it if not
         if not os.path.isfile(self.bat_file_path):
