@@ -1,5 +1,6 @@
 import subprocess
 import os
+import sys
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import sv_ttk
@@ -57,11 +58,20 @@ class ApplicationControlGUI(ttk.Frame):
         self.update_players_active = False
         self.application_name = 'PalServer-Win64-Test-Cmd.exe'
 
+        if getattr(sys, 'frozen', False):
+            # If bundled, the icon is in the same folder as the executable
+            icon_path = os.path.join(sys._MEIPASS, 'logoPalWorldControlCenter.ico')
+        else:
+            # If standalone, the icon is in the root folder
+            icon_path = 'logoPalWorldControlCenter.ico'
+
+        # Set the window icon
+        master.iconbitmap(icon_path)
+
         # Status Indicator
         self.status_canvas = tk.Canvas(self, width=20, height=20)
         self.status_canvas.grid(column=3, row=2, padx=(0, 20), pady=20, sticky=tk.W)
         self.status_canvas.create_oval(5, 5, 15, 15, fill="red", tags="status_circle")
-        self.update_status_indicator()
         self.player_count_label = ttk.Label(self, text="Player Count: N/A")
         self.player_count_label.grid(column=2, row=2, padx=10, pady=10)
 
@@ -163,6 +173,7 @@ class ApplicationControlGUI(ttk.Frame):
         self.resource_usage_queue = queue.Queue()
         self.start_resource_monitoring_thread()
         self.check_resource_usage_queue()
+        self.update_status_indicator()
 
 
     def kick_player(self):
@@ -491,6 +502,7 @@ start PalServer.exe -log -nosteam -useperfthreads -NoAsyncLoadingThread -UseMult
 # Tkinter window setup
 root = tk.Tk()
 root.title("PalWorld Control Center")
+
 app = ApplicationControlGUI(root)
 app.pack(expand=True, fill='both')
 root.mainloop()
