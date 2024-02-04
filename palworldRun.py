@@ -23,19 +23,18 @@ def is_application_running(app_name):
             return True
     return False
 
-def run_bat_file(file_path):
+def run_bat_file(file_path, app_name):
     try:
         subprocess.run(file_path, shell=True)
-        messagebox.showinfo("Info", "Application started successfully.")
     except Exception as e:
-        messagebox.showerror("Error", f"Failed to start the application: {e}")
+        messagebox.showerror("Error", f"Failed to start the server: {e}")
 
 def close_application(app_name):
     try:
         os.system(f"taskkill /f /im {app_name}")
-        messagebox.showinfo("Info", "Application stopped successfully.")
+        messagebox.showinfo("Info", "Server stopped successfully.")
     except Exception as e:
-        messagebox.showerror("Error", f"Failed to stop the application: {e}")
+        messagebox.showerror("Error", f"Failed to stop the server: {e}")
 
 def restart_application(file_path, app_name):
     close_application(app_name)
@@ -97,7 +96,7 @@ class ApplicationControlGUI(ttk.Frame):
         kill_button = ttk.Button(self.app_control_frame, text="Kill", command=self.stop_app)
         kill_button.grid(column=2, row=0, padx=20, pady=20, sticky=tk.W)
 
-        restart_button = ttk.Button(self.app_control_frame, text="restart", command=self.restart_app)
+        restart_button = ttk.Button(self.app_control_frame, text="Restart", command=self.restart_app)
         restart_button.grid(column=3, row=0, padx=20, pady=20, sticky=tk.W)
 
         save_button = ttk.Button(self.app_control_frame, text="Save", command=self.save_app)
@@ -444,12 +443,24 @@ class ApplicationControlGUI(ttk.Frame):
 
 
     def start_app(self):
-        run_bat_file(self.bat_file_path)
-        if self.is_running == False:
-            self.is_running = True
-            self.start_resource_monitoring_thread()
-        threading.Timer(10, self.update_status_indicator).start()
-        self.update_players_active = True
+        # Run the batch file to start the application
+        run_bat_file(self.bat_file_path, self.application_name)
+
+        # Attempt to check if the application started for a certain period
+        for _ in range(5):  # Try for 5 intervals
+            time.sleep(2)  # Wait for 2 seconds between checks
+            if is_application_running(self.application_name):
+                if not self.is_running:
+                    self.is_running = True
+                    self.start_resource_monitoring_thread()
+                self.update_status_indicator()
+                self.update_players_active = True
+                messagebox.showinfo('Info', 'Server started successfully')
+                break
+        else:
+            # If the application didn't start after the attempts
+            messagebox.showerror("Error", f"Failed to start the server: {self.application_name}")
+
 
     def stop_app(self):
         close_application(self.application_name)
