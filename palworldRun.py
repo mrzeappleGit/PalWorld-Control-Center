@@ -23,9 +23,9 @@ def is_application_running(app_name):
             return True
     return False
 
-def run_bat_file(file_path, app_name):
+def run_bat_file(file_path, steam_cmd):
     try:
-        subprocess.run(file_path, shell=True)
+        subprocess.run(file_path, shell=True, cwd=steam_cmd)
     except Exception as e:
         messagebox.showerror("Error", f"Failed to start the server: {e}")
 
@@ -36,9 +36,9 @@ def close_application(app_name):
     except Exception as e:
         messagebox.showerror("Error", f"Failed to stop the server: {e}")
 
-def restart_application(file_path, app_name):
+def restart_application(file_path, app_name, steam_cmd):
     close_application(app_name)
-    run_bat_file(file_path)
+    run_bat_file(file_path, steam_cmd)
 
 class ApplicationControlGUI(ttk.Frame):
     def __init__(self, master=None):
@@ -102,6 +102,10 @@ class ApplicationControlGUI(ttk.Frame):
         save_button = ttk.Button(self.app_control_frame, text="Save", command=self.save_app)
         save_button.grid(column=4, row=0, padx=20, pady=20, sticky=tk.W)
 
+        change_steamcmd_button = ttk.Button(self.app_control_frame, text="Change SteamCMD Folder", cursor=cursor_point, command=self.choose_steamcmd_folder)
+        change_steamcmd_button.grid(column=0, row=3, padx=20, pady=20, sticky=tk.W)
+
+
         # Label for Online Players Listbox
         online_players_label = ttk.Label(self.app_control_frame, text="Online Players")
         online_players_label.grid(column=0, row=1, padx=20, pady=(10, 0), sticky="w")
@@ -111,10 +115,10 @@ class ApplicationControlGUI(ttk.Frame):
         self.player_names_listbox.grid(column=0, row=2, columnspan=3, padx=20, pady=(0, 10), sticky="ew")
 
         kick_button = ttk.Button(self.app_control_frame, text="Kick", command=self.kick_player)
-        kick_button.grid(column=4, row=2, padx=(5, 0), pady=10, sticky="nw")
+        kick_button.grid(column=3, row=2, padx=(5, 0), pady=10, sticky="nw")
 
         ban_button = ttk.Button(self.app_control_frame, text="Ban", command=self.ban_player)
-        ban_button.grid(column=5, row=2, padx=(5, 0), pady=10, sticky="nw")
+        ban_button.grid(column=4, row=2, padx=(5, 0), pady=10, sticky="nw")
 
 
 
@@ -173,6 +177,29 @@ class ApplicationControlGUI(ttk.Frame):
         self.start_resource_monitoring_thread()
         self.check_resource_usage_queue()
         self.update_status_indicator()
+
+
+    def choose_steamcmd_folder(self):
+        """Prompt the user to select a new steamcmd folder."""
+        new_steamcmd_folder = filedialog.askdirectory(title="Select steamcmd folder")
+        if new_steamcmd_folder:
+            self.steamcmd_path = new_steamcmd_folder
+            self.save_steamcmd_path(new_steamcmd_folder)
+            self.initialize_paths(new_steamcmd_folder)
+            messagebox.showinfo("Info", "steamcmd folder updated successfully.")
+
+    def save_steamcmd_path(self, path):
+        """Save the steamcmd folder path to the config file."""
+        config_file_path = os.path.join(self.config_dir, self.config_file_name)
+        with open(config_file_path, 'w') as file:
+            file.write(path)
+
+    def initialize_paths(self, steamcmd_folder):
+        """Initialize or update paths based on the new steamcmd folder."""
+        self.bat_file_path = os.path.join(steamcmd_folder, "start.bat")
+        self.config_path = os.path.join(steamcmd_folder, "steamapps/common/PalServer/Pal/Saved/Config/WindowsServer/PalWorldSettings.ini")
+        self.banlist = os.path.join(steamcmd_folder, "steamapps/common/PalServer/Pal/Saved/SaveGames/banlist.txt")
+        self.first_time_setup()
 
 
     def kick_player(self):
@@ -444,7 +471,7 @@ class ApplicationControlGUI(ttk.Frame):
 
     def start_app(self):
         # Run the batch file to start the application
-        run_bat_file(self.bat_file_path, self.application_name)
+        run_bat_file(self.bat_file_path, self.steamcmd_path)
 
         # Attempt to check if the application started for a certain period
         for _ in range(5):  # Try for 5 intervals
@@ -468,7 +495,7 @@ class ApplicationControlGUI(ttk.Frame):
 
     def restart_app(self):
         self.deactivate_player_updates
-        restart_application(self.bat_file_path, self.application_name)
+        restart_application(self.bat_file_path, self.application_name, self.steamcmd_path)
         self.update_players_active = True
         threading.Timer(10, self.update_status_indicator).start()
 
@@ -490,6 +517,7 @@ class ApplicationControlGUI(ttk.Frame):
                 file.write(steamcmd_folder)
 
         # Set the paths for .bat file and ini configuration file
+        self.steamcmd_path = steamcmd_folder
         self.bat_file_path = os.path.join(steamcmd_folder, "start.bat")
         self.config_path = os.path.join(steamcmd_folder, "steamapps/common/PalServer/Pal/Saved/Config/WindowsServer/PalWorldSettings.ini")
         self.banlist = os.path.join(steamcmd_folder, "steamapps/common/PalServer/Pal/Saved/SaveGames/banlist.txt")
