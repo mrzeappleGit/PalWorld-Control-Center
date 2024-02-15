@@ -14,6 +14,7 @@ import queue
 from utility.palworld_util import PalworldUtil
 import csv
 import io
+import json
 
 
 def is_application_running(app_name):
@@ -48,7 +49,7 @@ class ApplicationControlGUI(ttk.Frame):
         cursor_point = "hand2" if platform != "darwin" else "pointinghand"
 
         self.app_name = 'PalworldControlCenter'  # Replace with your application's name
-        self.config_file_name = 'app_config.txt'
+        self.config_file_name = 'app_config.json'
         self.config_dir = os.path.join(os.environ['APPDATA'], self.app_name)
         if not os.path.exists(self.config_dir):
             os.makedirs(self.config_dir)
@@ -104,6 +105,8 @@ class ApplicationControlGUI(ttk.Frame):
 
         change_steamcmd_button = ttk.Button(self.app_control_frame, text="Change SteamCMD Folder", cursor=cursor_point, command=self.choose_steamcmd_folder)
         change_steamcmd_button.grid(column=0, row=3, padx=20, pady=20, sticky=tk.W)
+        change_palserver_button = ttk.Button(self.app_control_frame, text="Change PalServer Folder", cursor=cursor_point, command=self.choose_palserver_folder)
+        change_palserver_button.grid(column=1, row=3, padx=20, pady=20, sticky=tk.W)
 
 
         # Label for Online Players Listbox
@@ -177,6 +180,68 @@ class ApplicationControlGUI(ttk.Frame):
         self.start_resource_monitoring_thread()
         self.check_resource_usage_queue()
         self.update_status_indicator()
+        
+        
+    def choose_palserver_folder(self):
+        """Prompt the user to select the PalServer folder and update paths accordingly."""
+        self.new_palserver_folder = filedialog.askdirectory(title="Select PalServer folder")
+        if self.new_palserver_folder:
+            # Update the paths to reflect the new PalServer folder location
+            self.update_palserver_paths(self.new_palserver_folder)
+            self.save_paths_to_config(self, self.steamcmd_path, self.new_palserver_folder)
+            messagebox.showinfo("Info", "PalServer folder updated successfully.")
+
+    def update_palserver_paths(self, palserver_folder):
+        """Update application paths based on the new PalServer folder."""
+        self.config_path = os.path.join(palserver_folder, "Pal/Saved/Config/WindowsServer/PalWorldSettings.ini")
+        self.banlist = os.path.join(palserver_folder, "Pal/Saved/SaveGames/banlist.txt")
+            
+    def save_paths_to_config(self, steamcmd_path=None, palserver_path=None):
+        """Save the steamcmd and PalServer folder paths to the configuration file using JSON."""
+        # Read existing paths first to not overwrite one when the other is updated
+        existing_paths = self.read_paths_from_config()
+        if steamcmd_path is not None:
+            existing_paths['steamcmd'] = steamcmd_path
+        if palserver_path is not None:
+            existing_paths['palserver'] = palserver_path
+        
+        config_file_path = os.path.join(self.config_dir, self.config_file_name)
+        with open(config_file_path, 'w') as file:
+            json.dump(existing_paths, file, indent=4)
+
+            
+    def update_bat_file(self, palserver_folder):
+        """Update or create the start.bat file to use the new PalServer path."""
+        bat_file_path = os.path.join(self.steamcmd_path, "start.bat")
+        bat_content = f"""@echo off
+        echo Checking for updates...
+        steamcmd.exe +login anonymous +app_update 2394010 +quit
+
+        echo Launching server
+        cd "{palserver_folder}"
+        start PalServer.exe -log -nosteam -useperfthreads -NoAsyncLoadingThread -UseMultithreadForDS EpicApp=PalServer
+        """
+        with open(bat_file_path, 'w') as file:
+            file.write(bat_content)
+            messagebox.showinfo("Info", "start.bat updated successfully.")
+            
+    def read_paths_from_config(self):
+        """Read the steamcmd and PalServer folder paths from the configuration file using JSON."""
+        config_file_path = os.path.join(self.config_dir, self.config_file_name)
+        try:
+            with open(config_file_path, 'r') as file:
+                return json.load(file)
+        except FileNotFoundError:
+            return {'steamcmd': None, 'palserver': None}
+
+    def delete_old_config(self):
+        """Delete the old app_config.txt file if it exists."""
+        old_config_path = os.path.join(self.config_dir, 'app_config.txt')
+        if os.path.exists(old_config_path):
+            try:
+                os.remove(old_config_path)
+            except Exception as e:
+                print(f"Failed to remove old configuration file (app_config.txt): {e}")
 
 
     def choose_steamcmd_folder(self):
@@ -184,7 +249,7 @@ class ApplicationControlGUI(ttk.Frame):
         new_steamcmd_folder = filedialog.askdirectory(title="Select steamcmd folder")
         if new_steamcmd_folder:
             self.steamcmd_path = new_steamcmd_folder
-            self.save_steamcmd_path(new_steamcmd_folder)
+            self.save_paths_to_config(self, new_steamcmd_folder)
             self.initialize_paths(new_steamcmd_folder)
             messagebox.showinfo("Info", "steamcmd folder updated successfully.")
 
@@ -192,14 +257,13 @@ class ApplicationControlGUI(ttk.Frame):
         """Save the steamcmd folder path to the config file."""
         config_file_path = os.path.join(self.config_dir, self.config_file_name)
         with open(config_file_path, 'w') as file:
-            file.write(path)
+            file.write(path + "," + self.steamcmd_path)
 
     def initialize_paths(self, steamcmd_folder):
         """Initialize or update paths based on the new steamcmd folder."""
         self.bat_file_path = os.path.join(steamcmd_folder, "start.bat")
-        self.config_path = os.path.join(steamcmd_folder, "steamapps/common/PalServer/Pal/Saved/Config/WindowsServer/PalWorldSettings.ini")
-        self.banlist = os.path.join(steamcmd_folder, "steamapps/common/PalServer/Pal/Saved/SaveGames/banlist.txt")
-        self.first_time_setup()
+        self.config_path = os.path.join(self.palserver_path, "Pal/Saved/Config/WindowsServer/PalWorldSettings.ini")
+        self.banlist = os.path.join(self.palserver_path, "Pal/Saved/SaveGames/banlist.txt")
 
 
     def kick_player(self):
@@ -501,26 +565,25 @@ class ApplicationControlGUI(ttk.Frame):
 
 
     def first_time_setup(self):
-        config_file_path = os.path.join(self.config_dir, self.config_file_name)
-        # Check if the configuration file with the steamcmd path exists
-        if os.path.isfile(config_file_path):
-            with open(config_file_path, 'r') as file:
-                steamcmd_folder = file.read().strip()
-        else:
-            # If not, prompt the user to select the steamcmd folder
-            steamcmd_folder = tk.filedialog.askdirectory(title="Select steamcmd folder")
-            if not steamcmd_folder:
-                messagebox.showerror("Error", "steamcmd folder selection is required.")
-                return
-            # Save the selected path for future use
-            with open(config_file_path, 'w') as file:
-                file.write(steamcmd_folder)
-
-        # Set the paths for .bat file and ini configuration file
-        self.steamcmd_path = steamcmd_folder
-        self.bat_file_path = os.path.join(steamcmd_folder, "start.bat")
-        self.config_path = os.path.join(steamcmd_folder, "steamapps/common/PalServer/Pal/Saved/Config/WindowsServer/PalWorldSettings.ini")
-        self.banlist = os.path.join(steamcmd_folder, "steamapps/common/PalServer/Pal/Saved/SaveGames/banlist.txt")
+        self.delete_old_config()
+        paths = self.read_paths_from_config()
+        if not paths['steamcmd'] or not paths['palserver']:
+            # Prompt for missing paths
+            if not paths['steamcmd']:
+                paths['steamcmd'] = filedialog.askdirectory(title="Select steamcmd folder")
+                if not paths['steamcmd']:
+                    messagebox.showerror("Error", "SteamCMD folder selection is required.")
+                    return
+            if not paths['palserver']:
+                paths['palserver'] = filedialog.askdirectory(title="Select PalServer folder")
+                if not paths['palserver']:
+                    messagebox.showerror("Error", "PalServer folder selection is required.")
+                    return
+            self.save_paths_to_config(paths['steamcmd'], paths['palserver'])
+        
+        self.steamcmd_path = paths['steamcmd']
+        self.palserver_path = paths['palserver']
+        self.initialize_paths(self.steamcmd_path)
 
         # Check if the .bat file exists and create it if not
         if not os.path.isfile(self.bat_file_path):
