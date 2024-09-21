@@ -56,7 +56,7 @@ class ApplicationControlGUI(ttk.Frame):
 
         self.first_time_setup()
         self.update_players_active = False
-        self.application_name = 'PalServer-Win64-Shipping-Cmd.exe'
+        self.application_name = 'PalServer.exe'
 
         if getattr(sys, 'frozen', False):
             # If bundled, the icon is in the same folder as the executable
